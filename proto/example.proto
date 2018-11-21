@@ -1,0 +1,15 @@
+syntax="proto3";
+
+package example;
+
+service Registration {
+    rpc Registrate(UserRequest) returns (UserReply);
+}
+
+message UserRequest {
+    string email = 1;
+}
+
+message UserReply {
+    string email = 1;
+}
