@@ -6,7 +6,7 @@ import (
 	"log"
 	"time"
 
-	nats "github.com/nats-io/go-nats"
+	"github.com/nats-io/go-nats"
 	"github.com/pkg/errors"
 	"github.com/romanyx/nats_example/proto"
 )
@@ -30,10 +30,6 @@ func main() {
 	var ur proto.UserRequest
 	ur.Email = "work@romanyx.ru"
 
-	/*if _, err := natsConn.Request(*subj, []byte("\n\n\n\n\nerror"), 3*time.Second); err != nil {
-		log.Printf("got error on request %v\n", err)
-	}*/
-
 	data, err := ur.Marshal()
 	if err != nil {
 		log.Fatal(err)
@@ -51,7 +47,6 @@ func main() {
 	}
 
 	fmt.Printf("%+#v\n", urply)
-
 }
 
 func connectNATS(url string, opts []nats.Option) (*nats.Conn, error) {

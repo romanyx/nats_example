@@ -31,7 +31,7 @@ func (b *buffer) Clear() {
 type publishFunc func(subject string, data []byte) error
 
 // NewHandler returns handle func for nats messages handling.
-func NewHandler(srv registrater, pbl publishFunc) func(context.Context, *nats.Msg) error {
+func NewHandler(srv Registrater, pbl publishFunc) func(context.Context, *nats.Msg) error {
 	return func(ctx context.Context, msg *nats.Msg) error {
 		ctx, span := trace.StartSpan(ctx, "handler")
 		defer span.End()
@@ -60,17 +60,18 @@ func NewHandler(srv registrater, pbl publishFunc) func(context.Context, *nats.Ms
 	}
 }
 
-type registrater interface {
+// Registrater interface represents regisration service.
+type Registrater interface {
 	Registrate(ctx context.Context, req *proto.UserRequest, rply *proto.UserReply) error
 }
 
-// Registrater holds everithing required for registration.
+// Service holds everithing required for registration.
 // TODO(romanyx): implement logic of the registration this
 // struct now is only stub.
-type Registrater struct{}
+type Service struct{}
 
 // Registrate regisrates user and sets rply fields.
-func (r Registrater) Registrate(ctx context.Context, req *proto.UserRequest, rply *proto.UserReply) error {
+func (s Service) Registrate(ctx context.Context, req *proto.UserRequest, rply *proto.UserReply) error {
 	ctx, span := trace.StartSpan(ctx, "registrate")
 	defer span.End()
 

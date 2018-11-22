@@ -3,18 +3,20 @@ package main
 import (
 	"context"
 	"flag"
-	"fmt"
 	"log"
 	"net/http"
 	"os"
 	"os/signal"
+	"sync/atomic"
 	"syscall"
 	"time"
 
 	"github.com/heptiolabs/healthcheck"
 	"github.com/nats-io/go-nats"
+	"github.com/nats-io/go-nats-streaming"
 	"github.com/pkg/errors"
-	"github.com/romanyx/nats_example/internal/reg"
+	natsCli "github.com/romanyx/nats_example/internal/nats"
+	"github.com/romanyx/nats_example/internal/process"
 	"go.opencensus.io/examples/exporter"
 	"go.opencensus.io/exporter/prometheus"
 	"go.opencensus.io/stats"
@@ -25,18 +27,22 @@ import (
 const (
 	natsConnCheckInterval = 5 * time.Second
 	metricsReportPeriod   = 3 * time.Second
+	shutdownTimeout       = 15 * time.Second
 )
 
 var (
-	subscribeReplyErrorsCount = stats.Int64("example.com/measures/subscribe_reply_errors_count", "number of errors on subscribe reply", stats.UnitDimensionless)
-	natsPanicsCount           = stats.Int64("example.com/measures/nats_panics_count", "number of nats panics", stats.UnitDimensionless)
-	natsRequestsCount         = stats.Int64("example.com/measures/nats_ruqests_count", "number of nats requests", stats.UnitDimensionless)
+	queueErrorsCount  = stats.Int64("queue_errors_count", "number of errors on subscribe reply", stats.UnitDimensionless)
+	natsPanicsCount   = stats.Int64("nats_panics_count", "number of nats panics", stats.UnitDimensionless)
+	natsRequestsCount = stats.Int64("nats_ruqests_count", "number of nats requests", stats.UnitDimensionless)
 )
 
 func main() {
 	var (
 		natsURL     = flag.String("nats", "demo.nats.io", "url of NATS server")
-		subj        = flag.String("subj", "test.registrate", "nats subject")
+		clusterID   = flag.String("cluster", "test-cluster", "NATS Stream cluster ID")
+		clientID    = flag.String("client", "test-client", "NATS Stream client unique ID")
+		subj        = flag.String("subj", "test.jobs", "nats subject")
+		queue       = flag.String("queue", "queue", "nats subject queue name")
 		healthAddr  = flag.String("health", ":8081", "health check addr")
 		metricsAddr = flag.String("metrics", ":8082", "prometheus metrics addr")
 	)
@@ -57,9 +63,9 @@ func main() {
 
 	if err := view.Register(
 		&view.View{
-			Name:        "nats errors on subscribe",
-			Description: "number of errors in subscribe reply",
-			Measure:     subscribeReplyErrorsCount,
+			Name:        "nats errors on queue",
+			Description: "number of errors in queue",
+			Measure:     queueErrorsCount,
 			Aggregation: view.Count(),
 		},
 		&view.View{
@@ -105,12 +111,30 @@ func main() {
 	trace.ApplyConfig(trace.Config{DefaultSampler: trace.AlwaysSample()})
 
 	// Connect to NATS and subscribe to the subjects.
-	opts := []nats.Option{nats.Name("NATS Sample Responder")}
-	natsConn, natsTeardown := connectNATS(*natsURL, *subj, opts)
+	// TODO(romanyx): move queue subscription to factory
+	// func for future integration tests.
+	opts := []stan.Option{
+		stan.NatsURL(*natsURL),
+	}
+
+	natsStream, err := natsCli.NewStreamCli(*clusterID, *clientID, opts)
+	if err != nil {
+		log.Fatalf("nats client: %v\n", err)
+	}
+
+	mdlw := natsCli.NewStreamChain(metricsMiddleware)
+
+	// Sequence must be retrieved from storage to be valid one.
+	var sq Sequence
+	srv := process.Service{}
+	h := errorCatchWrapper(process.NewHandler(srv))
+	if err := natsStream.QueueFunc(*subj, *queue, &sq, mdlw.Then(h)); err != nil {
+		log.Fatalf("nats reply func for %s: %v", *subj, err)
+	}
 
 	// Add NATS status checks.
 	natsConnCheck := healthcheck.Check(func() error {
-		if status := natsConn.Status(); status != nats.CONNECTED {
+		if status := natsStream.Status(); status != nats.CONNECTED {
 			return errors.Errorf("connection status %d", status)
 		}
 
@@ -143,63 +167,66 @@ func main() {
 	case <-osSignals:
 		log.Println("stopping by signal")
 
-		if err := natsTeardown(); err != nil {
-			log.Printf("unsubscribe: %v\n", err)
+		ctx, cancel := context.WithTimeout(context.Background(), shutdownTimeout)
+		defer cancel()
+
+		if err := natsStream.Close(ctx); err != nil {
+			log.Fatalf("gracefull shutdown failed: %v", err)
 		}
 	}
 }
 
-type handleFunc func(context.Context, *nats.Msg) error
+type handleFunc func(context.Context, *stan.Msg) error
 
-func newHandle(h handleFunc, subj string) func(*nats.Msg) {
-	return func(msg *nats.Msg) {
-		ctx, cancel := context.WithCancel(context.Background())
-		defer cancel()
-		ctx, span := trace.StartSpan(ctx, fmt.Sprintf("nats.rply.%s", subj))
+func errorCatchWrapper(h handleFunc) natsCli.StreamHandler {
+	wrp := func(ctx context.Context, msg *stan.Msg) {
+		ctx, span := trace.StartSpan(ctx, "errorsWrapper")
 		defer span.End()
 
 		defer func() {
 			if r := recover(); r != nil {
 				stats.Record(ctx, natsPanicsCount.M(1))
-				log.Printf("trace: %s, panic on subscription %s", span.SpanContext().TraceID, subj)
+				log.Printf("trace: %s, panic on subscription reg", span.SpanContext().TraceID)
+				span.SetStatus(trace.Status{Code: trace.StatusCodeInternal, Message: "recover panic"})
 			}
 		}()
 
 		if err := h(ctx, msg); err != nil {
-			stats.Record(ctx, subscribeReplyErrorsCount.M(1))
+			stats.Record(ctx, queueErrorsCount.M(1))
 			span.SetStatus(trace.Status{Code: trace.StatusCodeInternal, Message: err.Error()})
 			err := errors.WithStack(err)
-			log.Printf("trace: %s, error to respond on subscription %s: %+v", span.SpanContext().TraceID, subj, err)
+			log.Printf("trace: %s, error to respond on subscription reg: %+v", span.SpanContext().TraceID, err)
 		}
-
-		stats.Record(ctx, natsRequestsCount.M(1))
 	}
+
+	return wrp
 }
 
-func connectNATS(url string, subj string, opts []nats.Option) (*nats.Conn, func() error) {
-	nc, err := nats.Connect(url, opts...)
-	if err != nil {
-		log.Fatalf("connect to NATS: %v", err)
+func metricsMiddleware(next natsCli.StreamHandler) natsCli.StreamHandler {
+	h := func(ctx context.Context, msg *stan.Msg) {
+		ctx, span := trace.StartSpan(ctx, "metricsMiddleware")
+		defer span.End()
+
+		next(ctx, msg)
+
+		// TODO(romanyx): add other metrics.
+		stats.Record(ctx, natsRequestsCount.M(1))
 	}
 
-	// Build replier for registration subscription and
-	// registrate async handler for it on NATS connection.
-	// TODO(romanyx): use middlewares pattern for errors, panics
-	// and metrics.
-	srv := reg.Registrater{}
-	h := reg.NewHandler(srv, nc.Publish)
-	sub, err := nc.Subscribe(subj, newHandle(h, subj))
-	if err != nil {
-		log.Fatalf("subscribe to %s failed: %v\n", subj, err)
-	}
+	return h
+}
 
-	return nc, func() error {
-		nc.Flush()
-		if err := sub.Unsubscribe(); err != nil {
-			return errors.Wrapf(err, "unsubscribe subj %s: %v", subj, err)
-		}
-		nc.Close()
+// Sequence used to check exactly once processing.
+type Sequence struct {
+	l uint64
+}
 
-		return nil
-	}
+// Last returns last sequence.
+func (s *Sequence) Last() uint64 {
+	return s.l
+}
+
+// Swap previous sequences to new one.
+func (s *Sequence) Swap(ns uint64) {
+	atomic.SwapUint64(&s.l, ns)
 }
