@@ -11,7 +11,7 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func Test_Handler(t *testing.T) {
+func Test_NatsHandler(t *testing.T) {
 	tests := []struct {
 		name        string
 		job         proto.JobRequest
@@ -47,7 +47,7 @@ func Test_Handler(t *testing.T) {
 				return
 			}
 
-			h := NewHandler(processerFunc(tt.processFunc))
+			h := NewNatsHandler(processerFunc(tt.processFunc))
 
 			msg := stan.Msg{
 				MsgProto: pb.MsgProto{

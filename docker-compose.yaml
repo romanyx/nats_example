@@ -1,0 +1,24 @@
+version: '3'
+
+services:
+  queue:
+    image: nats/queue:0.0.1
+    restart: always
+    ports:
+      - "8082:8082"
+      - "8081:8081"
+    command: ["-nats=nats:4222", "-jaeger=http://jaeger:14268"]
+  jaeger:
+    image: jaegertracing/all-in-one:latest
+    ports:
+      - "16686:16686"
+  nats:
+    image: nats-streaming:latest
+    ports:
+      - "4222:4222"
+  prometheus:
+    image: prom/prometheus:latest
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./prometheus/prometheus.yaml:/etc/prometheus/prometheus.yml

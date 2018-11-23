@@ -19,27 +19,25 @@ var (
 
 // Stream represents stream client  for NATS.
 type Stream struct {
-	conn     stan.Conn
+	stan.Conn
 	natsConn *nats.Conn
-	clientID string
 	subs     map[string]stan.Subscription
+
+	// Used in tests to channel
+	// that handler call processed.
+	queueHandleDone func()
 }
 
 // NewStreamCli connects NATS steamng client.
-func NewStreamCli(clusterID, clientID string, opts []stan.Option) (*Stream, error) {
-	sc, err := stan.Connect(clusterID, clientID, opts...)
-	if err != nil {
-		return nil, errors.Wrap(err, "connect to nats stream")
-	}
-
+func NewStreamCli(sc stan.Conn) *Stream {
 	s := Stream{
-		conn:     sc,
-		natsConn: sc.NatsConn(),
-		clientID: clientID,
-		subs:     make(map[string]stan.Subscription),
+		Conn:            sc,
+		natsConn:        sc.NatsConn(),
+		subs:            make(map[string]stan.Subscription),
+		queueHandleDone: func() {},
 	}
 
-	return &s, nil
+	return &s
 }
 
 // StreamHandler handler for subscription.
@@ -55,15 +53,15 @@ type Sequence interface {
 // QueueFunc registers client to given queue.
 // Supports I want exactly once processing with
 // by sequence.
-func (s *Stream) QueueFunc(subj, queue string, sq Sequence, h StreamHandler) error {
+func (s *Stream) QueueFunc(subj, queue, durableName string, sq Sequence, h StreamHandler) error {
 	if _, ok := s.subs[subj]; ok {
 		return errors.Errorf("subject %s already subscribed", subj)
 	}
 
-	sOpts := append(defaultSubscribeOpts, stan.DurableName(fmt.Sprintf("%s.subscription.%s", s.clientID, subj)))
-	sOpts = append(defaultSubscribeOpts, stan.StartAtSequence(sq.Last()))
+	sOpts := append(defaultSubscribeOpts, stan.DurableName(durableName))
+	sOpts = append(sOpts, stan.StartAtSequence(sq.Last()))
 
-	sub, err := s.conn.QueueSubscribe(subj, queue, func(msg *stan.Msg) {
+	sub, err := s.Conn.QueueSubscribe(subj, queue, func(msg *stan.Msg) {
 		if l := sq.Last(); msg.Sequence > l { // process only messages with sequence > last sequence.
 			ctx := context.Background()
 			ctx, span := trace.StartSpan(ctx, fmt.Sprintf("subscribe.%s", subj))
@@ -77,6 +75,7 @@ func (s *Stream) QueueFunc(subj, queue string, sq Sequence, h StreamHandler) err
 			// Swap sequence.
 			sq.Swap(msg.Sequence)
 		}
+		s.queueHandleDone()
 	}, sOpts...)
 
 	if err != nil {
@@ -87,9 +86,10 @@ func (s *Stream) QueueFunc(subj, queue string, sq Sequence, h StreamHandler) err
 	return nil
 }
 
-// Publish calls nats connection Publish func.
-func (s *Stream) Publish(subj string, data []byte) error {
-	return s.conn.Publish(subj, data)
+// SetQueueHandleDone user in tests to check that handler in queue
+// has been process.
+func (s *Stream) SetQueueHandleDone(f func()) {
+	s.queueHandleDone = f
 }
 
 // Status calls nats connection Status func.
@@ -105,10 +105,9 @@ func (s *Stream) Close(ctx context.Context) error {
 	go func() {
 		if err := s.close(); err != nil {
 			errChan <- err
-			return
 		}
 
-		errChan <- nil
+		close(errChan)
 	}()
 
 	select {

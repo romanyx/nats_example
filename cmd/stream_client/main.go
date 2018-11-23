@@ -1,7 +1,6 @@
 package main
 
 import (
-	"context"
 	"flag"
 	"log"
 
@@ -22,11 +21,14 @@ func main() {
 	opts := []stan.Option{
 		stan.NatsURL(*natsURL),
 	}
-	natsStream, err := natsCli.NewStreamCli(*clusterID, *clientID, opts)
+
+	ns, err := stan.Connect(*clusterID, *clientID, opts...)
 	if err != nil {
 		log.Fatalf("nats client: %v\n", err)
 	}
-	defer natsStream.Close(context.Background())
+	defer ns.Close()
+
+	natsStream := natsCli.NewStreamCli(ns)
 
 	var job proto.JobRequest
 	job.Id = 1

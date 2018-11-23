@@ -1,0 +1,7 @@
+scrape_configs:
+  - job_name: "queue-metrics"
+    scrape_interval: 15s
+    static_configs:
+      - targets: [
+       "queue:8082"
+      ]

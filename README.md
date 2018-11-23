@@ -1,9 +1,28 @@
-# NATS gogoproto request/reply and streaming
+# NATS streaming with gogoproto
 
-# Setup
+# Usage
 
-Run nats stream server.
+Build image and run docker compose.
 
 ```bash
-docker run -p 4223:4223 -p 8223:8223 nats-streaming -p 4223 -m 8223 -ns nats://demo.nats.io:4222 -cid=test-cluster
+make queue
+docker-compose up
 ```
+
+Send job
+
+```
+make send_job 
+```
+
+ * Prometheus: localhost:9090
+ * Jaeger: localhost:16686
+ * Liveness: localhost:8081/live
+ * Readiness: localhost:8081/ready
+
+# Test coverage
+
+```bash
+make cover
+```
+

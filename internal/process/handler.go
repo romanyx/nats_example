@@ -26,8 +26,8 @@ func (b *buffer) Clear() {
 	bufferPool.Put(b)
 }
 
-// NewHandler returns handle func for nats messages handling.
-func NewHandler(srv Processer) func(context.Context, *stan.Msg) error {
+// NewNatsHandler returns handle func for nats messages handling.
+func NewNatsHandler(srv Processer) func(context.Context, *stan.Msg) error {
 	h := func(ctx context.Context, msg *stan.Msg) error {
 		ctx, span := trace.StartSpan(ctx, "handler")
 		defer span.End()
@@ -52,15 +52,4 @@ func NewHandler(srv Processer) func(context.Context, *stan.Msg) error {
 // Processer interface represents job processer.
 type Processer interface {
 	Process(context.Context, *proto.JobRequest) error
-}
-
-// Service object holds logic of job processing.
-type Service struct{}
-
-// Process processes job.
-func (s Service) Process(ctx context.Context, job *proto.JobRequest) error {
-	ctx, span := trace.StartSpan(ctx, "processer")
-	defer span.End()
-
-	return nil
 }

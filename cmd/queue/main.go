@@ -3,11 +3,11 @@ package main
 import (
 	"context"
 	"flag"
+	"fmt"
 	"log"
 	"net/http"
 	"os"
 	"os/signal"
-	"sync/atomic"
 	"syscall"
 	"time"
 
@@ -15,9 +15,7 @@ import (
 	"github.com/nats-io/go-nats"
 	"github.com/nats-io/go-nats-streaming"
 	"github.com/pkg/errors"
-	natsCli "github.com/romanyx/nats_example/internal/nats"
-	"github.com/romanyx/nats_example/internal/process"
-	"go.opencensus.io/examples/exporter"
+	"go.opencensus.io/exporter/jaeger"
 	"go.opencensus.io/exporter/prometheus"
 	"go.opencensus.io/stats"
 	"go.opencensus.io/stats/view"
@@ -31,20 +29,25 @@ const (
 )
 
 var (
+	version           = "unset"
 	queueErrorsCount  = stats.Int64("queue_errors_count", "number of errors on subscribe reply", stats.UnitDimensionless)
 	natsPanicsCount   = stats.Int64("nats_panics_count", "number of nats panics", stats.UnitDimensionless)
 	natsRequestsCount = stats.Int64("nats_ruqests_count", "number of nats requests", stats.UnitDimensionless)
 )
 
 func main() {
+	fmt.Printf("version: %s\n", version)
+
 	var (
 		natsURL     = flag.String("nats", "demo.nats.io", "url of NATS server")
 		clusterID   = flag.String("cluster", "test-cluster", "NATS Stream cluster ID")
 		clientID    = flag.String("client", "test-client", "NATS Stream client unique ID")
 		subj        = flag.String("subj", "test.jobs", "nats subject")
 		queue       = flag.String("queue", "queue", "nats subject queue name")
+		durableName = flag.String("durableName", "dirable-name", "nats durable name for client")
 		healthAddr  = flag.String("health", ":8081", "health check addr")
 		metricsAddr = flag.String("metrics", ":8082", "prometheus metrics addr")
+		jaegerURL   = flag.String("jaeger", "http://127.0.0.1:14268", "jaeger server url")
 	)
 	flag.Parse()
 
@@ -101,8 +104,14 @@ func main() {
 	}()
 
 	// Register trace exporter.
-	// TODO(romanyx): export to Jaeger.
-	e := &exporter.PrintExporter{}
+	e, err := jaeger.NewExporter(jaeger.Options{
+		Endpoint:    *jaegerURL,
+		ServiceName: "queue",
+	})
+	if err != nil {
+		log.Fatalf("failed to create jaeger exporter: %v", err)
+	}
+	defer e.Flush()
 	trace.RegisterExporter(e)
 
 	// Always trace for this demo. In a production application, you should
@@ -117,20 +126,12 @@ func main() {
 		stan.NatsURL(*natsURL),
 	}
 
-	natsStream, err := natsCli.NewStreamCli(*clusterID, *clientID, opts)
+	sc, err := stan.Connect(*clusterID, *clientID, opts...)
 	if err != nil {
-		log.Fatalf("nats client: %v\n", err)
+		log.Fatalf("nats conn: %v\n", err)
 	}
 
-	mdlw := natsCli.NewStreamChain(metricsMiddleware)
-
-	// Sequence must be retrieved from storage to be valid one.
-	var sq Sequence
-	srv := process.Service{}
-	h := errorCatchWrapper(process.NewHandler(srv))
-	if err := natsStream.QueueFunc(*subj, *queue, &sq, mdlw.Then(h)); err != nil {
-		log.Fatalf("nats reply func for %s: %v", *subj, err)
-	}
+	natsStream := setupNatsQueue(sc, os.Stdout, *subj, *queue, *durableName)
 
 	// Add NATS status checks.
 	natsConnCheck := healthcheck.Check(func() error {
@@ -174,59 +175,4 @@ func main() {
 			log.Fatalf("gracefull shutdown failed: %v", err)
 		}
 	}
-}
-
-type handleFunc func(context.Context, *stan.Msg) error
-
-func errorCatchWrapper(h handleFunc) natsCli.StreamHandler {
-	wrp := func(ctx context.Context, msg *stan.Msg) {
-		ctx, span := trace.StartSpan(ctx, "errorsWrapper")
-		defer span.End()
-
-		defer func() {
-			if r := recover(); r != nil {
-				stats.Record(ctx, natsPanicsCount.M(1))
-				log.Printf("trace: %s, panic on subscription reg", span.SpanContext().TraceID)
-				span.SetStatus(trace.Status{Code: trace.StatusCodeInternal, Message: "recover panic"})
-			}
-		}()
-
-		if err := h(ctx, msg); err != nil {
-			stats.Record(ctx, queueErrorsCount.M(1))
-			span.SetStatus(trace.Status{Code: trace.StatusCodeInternal, Message: err.Error()})
-			err := errors.WithStack(err)
-			log.Printf("trace: %s, error to respond on subscription reg: %+v", span.SpanContext().TraceID, err)
-		}
-	}
-
-	return wrp
-}
-
-func metricsMiddleware(next natsCli.StreamHandler) natsCli.StreamHandler {
-	h := func(ctx context.Context, msg *stan.Msg) {
-		ctx, span := trace.StartSpan(ctx, "metricsMiddleware")
-		defer span.End()
-
-		next(ctx, msg)
-
-		// TODO(romanyx): add other metrics.
-		stats.Record(ctx, natsRequestsCount.M(1))
-	}
-
-	return h
-}
-
-// Sequence used to check exactly once processing.
-type Sequence struct {
-	l uint64
-}
-
-// Last returns last sequence.
-func (s *Sequence) Last() uint64 {
-	return s.l
-}
-
-// Swap previous sequences to new one.
-func (s *Sequence) Swap(ns uint64) {
-	atomic.SwapUint64(&s.l, ns)
 }
