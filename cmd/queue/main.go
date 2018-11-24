@@ -15,6 +15,7 @@ import (
 	"github.com/nats-io/go-nats"
 	"github.com/nats-io/go-nats-streaming"
 	"github.com/pkg/errors"
+	"github.com/streadway/amqp"
 	"go.opencensus.io/exporter/jaeger"
 	"go.opencensus.io/exporter/prometheus"
 	"go.opencensus.io/stats"
@@ -40,6 +41,7 @@ func main() {
 
 	var (
 		natsURL     = flag.String("nats", "demo.nats.io", "url of NATS server")
+		rabbitURL   = flag.String("rabbit", "amqp://guest:guest@127.0.0.1:5672/", "url of NATS server")
 		clusterID   = flag.String("cluster", "test-cluster", "NATS Stream cluster ID")
 		clientID    = flag.String("client", "test-client", "NATS Stream client unique ID")
 		subj        = flag.String("subj", "test.jobs", "nats subject")
@@ -144,6 +146,17 @@ func main() {
 
 	health.AddReadinessCheck("NATS connection ready", natsConnCheck)
 	health.AddLivenessCheck("NATS connection live", healthcheck.Async(natsConnCheck, natsConnCheckInterval))
+
+	// Add RabbitMQ queue.
+	rc, err := amqp.Dial(*rabbitURL)
+	if err != nil {
+		log.Fatalf("rabbit conn: %v\n", err)
+	}
+	defer rc.Close() // TODO(romanyx): handle gracefuly.
+
+	setupRabbitQueue(rc, os.Stdout, *queue)
+
+	// TODO(romanyx): Add rabbitmq live checks.
 
 	// Build and start healt server.
 	healthServer := http.Server{
