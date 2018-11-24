@@ -17,8 +17,6 @@ make send_job
 
  * Prometheus: localhost:9090
  * Jaeger: localhost:16686
- * Liveness: localhost:8081/live
- * Readiness: localhost:8081/ready
 
 # Test coverage
 

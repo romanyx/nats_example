@@ -119,6 +119,7 @@ func (s *Stream) Close(ctx context.Context) error {
 }
 
 func (s *Stream) close() error {
+	s.natsConn.Flush()
 	defer s.natsConn.Close()
 
 	for subj, sub := range s.subs {

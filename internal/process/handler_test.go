@@ -68,6 +68,36 @@ func Test_NatsHandler(t *testing.T) {
 	}
 }
 
+func Benchmark_NatsHandler(b *testing.B) {
+	h := NewNatsHandler(processerFunc(func(context.Context, *proto.JobRequest) error {
+		return nil
+	}))
+
+	ctx := context.Background()
+	job := proto.JobRequest{
+		Id: 1,
+	}
+	data, err := job.Marshal()
+	if err != nil {
+		assert.Nil(b, err)
+		return
+	}
+
+	msg := stan.Msg{
+		MsgProto: pb.MsgProto{
+			Data: data,
+		},
+	}
+
+	b.ResetTimer()
+
+	for i := 0; i < b.N; i++ {
+		h(ctx, &msg)
+	}
+
+	b.ReportAllocs()
+}
+
 type processerFunc func(context.Context, *proto.JobRequest) error
 
 func (f processerFunc) Process(c context.Context, jr *proto.JobRequest) error {
