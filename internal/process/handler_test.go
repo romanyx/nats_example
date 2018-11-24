@@ -64,7 +64,7 @@ func Test_NatsHandler(t *testing.T) {
 			h := NewNatsHandler(processerFunc(tt.processFunc))
 
 			ctx := context.Background()
-			err = h(ctx, dataFunc(tt.dataFunc))
+			err := h(ctx, dataFunc(tt.dataFunc))
 
 			if tt.wantErr {
 				assert.NotNil(t, err)
