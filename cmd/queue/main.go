@@ -41,7 +41,7 @@ func main() {
 
 	var (
 		natsURL     = flag.String("nats", "demo.nats.io", "url of NATS server")
-		rabbitURL   = flag.String("rabbit", "amqp://guest:guest@127.0.0.1:5672/", "url of NATS server")
+		rabbitURL   = flag.String("rabbit", "amqp://guest:guest@127.0.0.1:5672/", "url of RabbitMQ  server")
 		clusterID   = flag.String("cluster", "test-cluster", "NATS Stream cluster ID")
 		clientID    = flag.String("client", "test-client", "NATS Stream client unique ID")
 		subj        = flag.String("subj", "test.jobs", "nats subject")
@@ -122,8 +122,6 @@ func main() {
 	trace.ApplyConfig(trace.Config{DefaultSampler: trace.AlwaysSample()})
 
 	// Connect to NATS and subscribe to the subjects.
-	// TODO(romanyx): move queue subscription to factory
-	// func for future integration tests.
 	opts := []stan.Option{
 		stan.NatsURL(*natsURL),
 	}

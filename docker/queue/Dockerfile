@@ -18,5 +18,5 @@ ENTRYPOINT ["/bin/queue"]
 LABEL org.opencontainers.image.created=$BUILD_DATE \
       org.opencontainers.image.title="queue" \
       org.opencontainers.image.authors="Roman Budnikov <work@romanyx.ru>" \
-      org.opencontainers.image.source="https://github.com/romanyx/nats_example/cmd/sales-api" \
+      org.opencontainers.image.source="https://github.com/romanyx/nats_example/cmd/queue" \
       org.opencontainers.image.revision=$VCS_REF \

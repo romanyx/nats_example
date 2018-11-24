@@ -89,7 +89,7 @@ func (s *Sequence) Last() uint64 {
 	return s.l
 }
 
-// Swap previous sequences to new one.
+// Swap previous sequences with the new one.
 func (s *Sequence) Swap(ns uint64) {
 	atomic.SwapUint64(&s.l, ns)
 }

@@ -10,8 +10,8 @@ import (
 
 func main() {
 	var (
-		rabbitURL = flag.String("rabbit", "amqp://guest:guest@127.0.0.1:5672/", "url of NATS server")
-		queue     = flag.String("queue", "queue", "nats subject queue name")
+		rabbitURL = flag.String("rabbit", "amqp://guest:guest@127.0.0.1:5672/", "url of rabbitmq server")
+		queue     = flag.String("queue", "queue", "rabbitmq subject queue name")
 	)
 	flag.Parse()
 
