@@ -10,23 +10,45 @@ import (
 )
 
 func Test_NatsHandler(t *testing.T) {
+	job := proto.JobRequest{
+		Id: 1,
+	}
+
+	data, err := job.Marshal()
+	if err != nil {
+		t.Errorf("failed to mastshal job: %v", err)
+	}
+
 	tests := []struct {
 		name        string
-		job         proto.JobRequest
+		dataFunc    func() []byte
 		processFunc func(ctx context.Context, job *proto.JobRequest) error
 		wantErr     bool
 	}{
 		{
 			name: "ok",
-			job: proto.JobRequest{
-				Id: 1,
+			dataFunc: func() []byte {
+				return data
 			},
 			processFunc: func(ctx context.Context, job *proto.JobRequest) error {
 				return nil
 			},
 		},
 		{
+			name: "unmarshal err",
+			dataFunc: func() []byte {
+				return []byte("\n\n\n")
+			},
+			processFunc: func(ctx context.Context, job *proto.JobRequest) error {
+				return errors.New("mock error")
+			},
+			wantErr: true,
+		},
+		{
 			name: "process err",
+			dataFunc: func() []byte {
+				return data
+			},
 			processFunc: func(ctx context.Context, job *proto.JobRequest) error {
 				return errors.New("mock error")
 			},
@@ -39,20 +61,10 @@ func Test_NatsHandler(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			data, err := tt.job.Marshal()
-			if err != nil {
-				assert.Nil(t, err)
-				return
-			}
-
 			h := NewNatsHandler(processerFunc(tt.processFunc))
 
-			msg := dataFunc(func() []byte {
-				return data
-			})
-
 			ctx := context.Background()
-			err = h(ctx, &msg)
+			err = h(ctx, dataFunc(tt.dataFunc))
 
 			if tt.wantErr {
 				assert.NotNil(t, err)
