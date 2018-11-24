@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/nats-io/go-nats-streaming"
+	"github.com/romanyx/nats_example/internal/process"
 	"github.com/romanyx/nats_example/proto"
 	"github.com/stretchr/testify/assert"
 )
@@ -68,26 +69,26 @@ func TestQueue(t *testing.T) {
 func Test_errCatchWrapper(t *testing.T) {
 	tests := []struct {
 		name       string
-		handleFunc func(context.Context, *stan.Msg) error
+		handleFunc func(context.Context, process.Data) error
 		expect     string
 	}{
 		{
 			name: "should log error",
-			handleFunc: func(context.Context, *stan.Msg) error {
+			handleFunc: func(context.Context, process.Data) error {
 				return errors.New("mock error")
 			},
 			expect: "mock error",
 		},
 		{
 			name: "should recover panic",
-			handleFunc: func(context.Context, *stan.Msg) error {
+			handleFunc: func(context.Context, process.Data) error {
 				panic("mock panic")
 			},
 			expect: "mock panic",
 		},
 		{
 			name: "should skip without error",
-			handleFunc: func(context.Context, *stan.Msg) error {
+			handleFunc: func(context.Context, process.Data) error {
 				return nil
 			},
 		},

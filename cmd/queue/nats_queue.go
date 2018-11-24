@@ -32,9 +32,7 @@ func setupNatsQueue(nsc stan.Conn, w io.Writer, subj, queue, durableName string)
 	return natsStream
 }
 
-type handleFunc func(context.Context, *stan.Msg) error
-
-func errCatchWrapper(h handleFunc) natsCli.StreamHandler {
+func errCatchWrapper(h process.PolyHandler) natsCli.StreamHandler {
 	wrp := func(ctx context.Context, msg *stan.Msg) {
 		ctx, span := trace.StartSpan(ctx, "errorsWrapper")
 		defer span.End()
@@ -47,7 +45,8 @@ func errCatchWrapper(h handleFunc) natsCli.StreamHandler {
 			}
 		}()
 
-		if err := h(ctx, msg); err != nil {
+		m := polyMsg{msg}
+		if err := h(ctx, m); err != nil {
 			stats.Record(ctx, queueErrorsCount.M(1))
 			span.SetStatus(trace.Status{Code: trace.StatusCodeInternal, Message: err.Error()})
 			err := errors.WithStack(err)
@@ -56,6 +55,14 @@ func errCatchWrapper(h handleFunc) natsCli.StreamHandler {
 	}
 
 	return wrp
+}
+
+type polyMsg struct {
+	msg *stan.Msg
+}
+
+func (m polyMsg) Data() []byte {
+	return m.msg.Data
 }
 
 func metricsMiddleware(next natsCli.StreamHandler) natsCli.StreamHandler {

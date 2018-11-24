@@ -4,8 +4,6 @@ import (
 	"context"
 	"testing"
 
-	"github.com/nats-io/go-nats-streaming"
-	"github.com/nats-io/go-nats-streaming/pb"
 	"github.com/pkg/errors"
 	"github.com/romanyx/nats_example/proto"
 	"github.com/stretchr/testify/assert"
@@ -49,11 +47,9 @@ func Test_NatsHandler(t *testing.T) {
 
 			h := NewNatsHandler(processerFunc(tt.processFunc))
 
-			msg := stan.Msg{
-				MsgProto: pb.MsgProto{
-					Data: data,
-				},
-			}
+			msg := dataFunc(func() []byte {
+				return data
+			})
 
 			ctx := context.Background()
 			err = h(ctx, &msg)
@@ -83,11 +79,9 @@ func Benchmark_NatsHandler(b *testing.B) {
 		return
 	}
 
-	msg := stan.Msg{
-		MsgProto: pb.MsgProto{
-			Data: data,
-		},
-	}
+	msg := dataFunc(func() []byte {
+		return data
+	})
 
 	b.ResetTimer()
 
@@ -96,6 +90,12 @@ func Benchmark_NatsHandler(b *testing.B) {
 	}
 
 	b.ReportAllocs()
+}
+
+type dataFunc func() []byte
+
+func (f dataFunc) Data() []byte {
+	return f()
 }
 
 type processerFunc func(context.Context, *proto.JobRequest) error
