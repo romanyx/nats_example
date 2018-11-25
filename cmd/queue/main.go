@@ -15,6 +15,7 @@ import (
 	"github.com/nats-io/go-nats"
 	"github.com/nats-io/go-nats-streaming"
 	"github.com/pkg/errors"
+	"github.com/streadway/amqp"
 	"go.opencensus.io/exporter/jaeger"
 	"go.opencensus.io/exporter/prometheus"
 	"go.opencensus.io/stats"
@@ -24,7 +25,7 @@ import (
 
 const (
 	natsConnCheckInterval = 5 * time.Second
-	metricsReportPeriod   = 3 * time.Second
+	metricsReportPeriod   = 15 * time.Second
 	shutdownTimeout       = 15 * time.Second
 )
 
@@ -40,6 +41,7 @@ func main() {
 
 	var (
 		natsURL     = flag.String("nats", "demo.nats.io", "url of NATS server")
+		rabbitURL   = flag.String("rabbit", "amqp://guest:guest@127.0.0.1:5672/", "url of RabbitMQ  server")
 		clusterID   = flag.String("cluster", "test-cluster", "NATS Stream cluster ID")
 		clientID    = flag.String("client", "test-client", "NATS Stream client unique ID")
 		subj        = flag.String("subj", "test.jobs", "nats subject")
@@ -57,7 +59,7 @@ func main() {
 	// Health checker handler.
 	health := healthcheck.NewHandler()
 
-	// Register metrics exporter.
+	// Register metrics exporter and views.
 	pex, err := prometheus.NewExporter(prometheus.Options{})
 	if err != nil {
 		log.Fatalf("prometheus exporter: %v\n", err)
@@ -119,9 +121,7 @@ func main() {
 	// probability.
 	trace.ApplyConfig(trace.Config{DefaultSampler: trace.AlwaysSample()})
 
-	// Connect to NATS and subscribe to the subjects.
-	// TODO(romanyx): move queue subscription to factory
-	// func for future integration tests.
+	// Connect to NATS and setup routing and processing.
 	opts := []stan.Option{
 		stan.NatsURL(*natsURL),
 	}
@@ -144,6 +144,17 @@ func main() {
 
 	health.AddReadinessCheck("NATS connection ready", natsConnCheck)
 	health.AddLivenessCheck("NATS connection live", healthcheck.Async(natsConnCheck, natsConnCheckInterval))
+
+	// Add RabbitMQ queue.
+	rc, err := amqp.Dial(*rabbitURL)
+	if err != nil {
+		log.Fatalf("rabbit conn: %v\n", err)
+	}
+	defer rc.Close() // TODO(romanyx): handle gracefuly.
+
+	setupRabbitQueue(rc, os.Stdout, *queue)
+
+	// TODO(romanyx): Add rabbitmq live checks.
 
 	// Build and start healt server.
 	healthServer := http.Server{

@@ -25,6 +25,8 @@ func TestMain(m *testing.M) {
 	// uses a sensible default on windows (tcp/http) and linux/osx (socket).
 	pool, err := dockertest.NewPool("")
 	if err != nil {
+		// TODO(romanyx): don't just fatal, set short mode manualy
+		// print warning and continue testing in short mode.
 		log.Fatalf("could not connect to docker: %v", err)
 	}
 

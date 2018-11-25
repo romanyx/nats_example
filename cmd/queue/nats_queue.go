@@ -32,9 +32,7 @@ func setupNatsQueue(nsc stan.Conn, w io.Writer, subj, queue, durableName string)
 	return natsStream
 }
 
-type handleFunc func(context.Context, *stan.Msg) error
-
-func errCatchWrapper(h handleFunc) natsCli.StreamHandler {
+func errCatchWrapper(h process.PolyHandler) natsCli.StreamHandler {
 	wrp := func(ctx context.Context, msg *stan.Msg) {
 		ctx, span := trace.StartSpan(ctx, "errorsWrapper")
 		defer span.End()
@@ -47,7 +45,8 @@ func errCatchWrapper(h handleFunc) natsCli.StreamHandler {
 			}
 		}()
 
-		if err := h(ctx, msg); err != nil {
+		m := polyMsg{msg}
+		if err := h(ctx, m); err != nil {
 			stats.Record(ctx, queueErrorsCount.M(1))
 			span.SetStatus(trace.Status{Code: trace.StatusCodeInternal, Message: err.Error()})
 			err := errors.WithStack(err)
@@ -56,6 +55,14 @@ func errCatchWrapper(h handleFunc) natsCli.StreamHandler {
 	}
 
 	return wrp
+}
+
+type polyMsg struct {
+	msg *stan.Msg
+}
+
+func (m polyMsg) Data() []byte {
+	return m.msg.Data
 }
 
 func metricsMiddleware(next natsCli.StreamHandler) natsCli.StreamHandler {
@@ -82,7 +89,7 @@ func (s *Sequence) Last() uint64 {
 	return s.l
 }
 
-// Swap previous sequences to new one.
+// Swap previous sequences with the new one.
 func (s *Sequence) Swap(ns uint64) {
 	atomic.SwapUint64(&s.l, ns)
 }
@@ -91,8 +98,9 @@ type processWithWriter struct {
 	Writer io.Writer
 }
 
-// Process holds business logic for processWithWriter
-// implementation for job processer.
+// Process example of processer
+// implementation with wrinting to
+// the wirter.
 func (p processWithWriter) Process(ctx context.Context, job *proto.JobRequest) error {
 	ctx, span := trace.StartSpan(ctx, "processWithWriter")
 	defer span.End()

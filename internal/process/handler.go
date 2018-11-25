@@ -4,7 +4,6 @@ import (
 	"context"
 	"sync"
 
-	"github.com/nats-io/go-nats-streaming"
 	"github.com/pkg/errors"
 	"github.com/romanyx/nats_example/proto"
 	"go.opencensus.io/trace"
@@ -26,16 +25,31 @@ func (b *buffer) Clear() {
 	bufferPool.Put(b)
 }
 
+// Processer is a job processer.
+type Processer interface {
+	Process(context.Context, *proto.JobRequest) error
+}
+
+// Data interface represents content of
+// the incoming message.
+type Data interface {
+	Data() []byte
+}
+
+// PolyHandler is a polymorphic handler
+// to perform any messaging queue.
+type PolyHandler func(context.Context, Data) error
+
 // NewNatsHandler returns handle func for nats messages handling.
-func NewNatsHandler(srv Processer) func(context.Context, *stan.Msg) error {
-	h := func(ctx context.Context, msg *stan.Msg) error {
+func NewNatsHandler(srv Processer) PolyHandler {
+	h := func(ctx context.Context, d Data) error {
 		ctx, span := trace.StartSpan(ctx, "handler")
 		defer span.End()
 
 		buf := bufferPool.Get().(*buffer)
 		defer buf.Clear()
 
-		if err := buf.job.Unmarshal(msg.Data); err != nil {
+		if err := buf.job.Unmarshal(d.Data()); err != nil {
 			return errors.Wrap(err, "req unmasrshal")
 		}
 
@@ -47,9 +61,4 @@ func NewNatsHandler(srv Processer) func(context.Context, *stan.Msg) error {
 	}
 
 	return h
-}
-
-// Processer interface represents job processer.
-type Processer interface {
-	Process(context.Context, *proto.JobRequest) error
 }

@@ -9,10 +9,16 @@ make queue
 docker-compose up
 ```
 
-Send job
+Send job to nats
 
 ```
 make send_job 
+```
+
+Send job to rabbit
+
+```
+go run cmd/rabbit_client/main.go
 ```
 
  * Prometheus: localhost:9090
