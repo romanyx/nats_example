@@ -23,7 +23,7 @@ type Stream struct {
 	natsConn *nats.Conn
 	subs     map[string]stan.Subscription
 
-	// Used in tests to channel
+	// Used in tests to signal
 	// that handler call processed.
 	queueHandleDone func()
 }
@@ -43,7 +43,7 @@ func NewStreamCli(sc stan.Conn) *Stream {
 // StreamHandler handler for subscription.
 type StreamHandler func(context.Context, *stan.Msg)
 
-// Sequence get and set last sequence.
+// Sequence interface get and swap sequences.
 // Implementation should be atomic.
 type Sequence interface {
 	Last() uint64
@@ -51,8 +51,8 @@ type Sequence interface {
 }
 
 // QueueFunc registers client to given queue.
-// Supports I want exactly once processing with
-// by sequence.
+// Supports "I want exactly once processing"
+// with sequence checking.
 func (s *Stream) QueueFunc(subj, queue, durableName string, sq Sequence, h StreamHandler) error {
 	if _, ok := s.subs[subj]; ok {
 		return errors.Errorf("subject %s already subscribed", subj)
@@ -86,8 +86,8 @@ func (s *Stream) QueueFunc(subj, queue, durableName string, sq Sequence, h Strea
 	return nil
 }
 
-// SetQueueHandleDone user in tests to check that handler in queue
-// has been process.
+// SetQueueHandleDone used in tests to check that handler
+// in queue has been process.
 func (s *Stream) SetQueueHandleDone(f func()) {
 	s.queueHandleDone = f
 }
@@ -97,8 +97,9 @@ func (s *Stream) Status() nats.Status {
 	return s.natsConn.Status()
 }
 
-// Close unsubscribes subscriptions and
-// closes the connection.
+// Close unsubscribes all the subscriptions
+// and after closes the connection, will be
+// terminated in case of context done.
 func (s *Stream) Close(ctx context.Context) error {
 	errChan := make(chan error)
 
@@ -134,12 +135,12 @@ func (s *Stream) close() error {
 // StreamMiddleware represents middleware for NATS stream client.
 type StreamMiddleware func(StreamHandler) StreamHandler
 
-// StreamChain represents chain for NATS stream client.
+// StreamChain chain containes list of middlewares.
 type StreamChain struct {
 	middlewares []StreamMiddleware
 }
 
-// NewStreamChain creates new chain with middlewares.
+// NewStreamChain creates new chain with given middlewares.
 func NewStreamChain(middlewares ...StreamMiddleware) StreamChain {
 	chain := StreamChain{
 		middlewares: append(([]StreamMiddleware)(nil), middlewares...),

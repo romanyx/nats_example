@@ -25,7 +25,7 @@ func TestQueue(t *testing.T) {
 		t.Skip("skipping test in short mode")
 	}
 
-	t.Log("After setup of nats queue should start to process queue.")
+	t.Log("after setup should start to process queue.")
 	{
 		var buf bytes.Buffer
 		subj := fmt.Sprintf("test-sub-%d", time.Now().UnixNano())
@@ -48,7 +48,7 @@ func TestQueue(t *testing.T) {
 			jobDoneChan <- struct{}{}
 		})
 
-		t.Logf("\tTest 0:\t When receive valid message should process it.")
+		t.Log("\ttest 0:\t when receive valid message should process it.")
 		{
 			err := natsStream.Publish(subj, data)
 			assert.Nil(t, err)

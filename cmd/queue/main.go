@@ -25,7 +25,7 @@ import (
 
 const (
 	natsConnCheckInterval = 5 * time.Second
-	metricsReportPeriod   = 3 * time.Second
+	metricsReportPeriod   = 15 * time.Second
 	shutdownTimeout       = 15 * time.Second
 )
 
@@ -59,7 +59,7 @@ func main() {
 	// Health checker handler.
 	health := healthcheck.NewHandler()
 
-	// Register metrics exporter.
+	// Register metrics exporter and views.
 	pex, err := prometheus.NewExporter(prometheus.Options{})
 	if err != nil {
 		log.Fatalf("prometheus exporter: %v\n", err)
@@ -121,7 +121,7 @@ func main() {
 	// probability.
 	trace.ApplyConfig(trace.Config{DefaultSampler: trace.AlwaysSample()})
 
-	// Connect to NATS and subscribe to the subjects.
+	// Connect to NATS and setup routing and processing.
 	opts := []stan.Option{
 		stan.NatsURL(*natsURL),
 	}

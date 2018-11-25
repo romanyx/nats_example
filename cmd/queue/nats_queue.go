@@ -98,8 +98,9 @@ type processWithWriter struct {
 	Writer io.Writer
 }
 
-// Process holds business logic for processWithWriter
-// implementation for job processer.
+// Process example of processer
+// implementation with wrinting to
+// the wirter.
 func (p processWithWriter) Process(ctx context.Context, job *proto.JobRequest) error {
 	ctx, span := trace.StartSpan(ctx, "processWithWriter")
 	defer span.End()
