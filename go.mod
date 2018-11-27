@@ -31,7 +31,6 @@ require (
 	github.com/pascaldekloe/goe v0.0.0-20180627143212-57f6aae5913c // indirect
 	github.com/pkg/errors v0.8.0
 	github.com/sirupsen/logrus v1.2.0 // indirect
-	github.com/streadway/amqp v0.0.0-20181107104731-27835f1a64e9
 	github.com/stretchr/testify v1.2.2
 	go.opencensus.io v0.18.0
 	google.golang.org/appengine v1.3.0 // indirect
