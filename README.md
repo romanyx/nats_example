@@ -15,12 +15,6 @@ Send job to nats
 make send_job 
 ```
 
-Send job to rabbit
-
-```
-go run cmd/rabbit_client/main.go
-```
-
  * Prometheus: localhost:9090
  * Jaeger: localhost:16686
 

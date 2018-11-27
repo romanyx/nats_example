@@ -3,7 +3,7 @@ version: '3'
 services:
   queue:
     image: nats/queue:0.0.1
-    command: ["-nats=nats:4222", "-jaeger=http://jaeger:14268", "-rabbit=amqp://guest:guest@rabbit:5672/"]
+    command: ["-nats=nats:4222", "-jaeger=http://jaeger:14268"]
     restart: always
     depends_on:
       - nats
@@ -17,10 +17,6 @@ services:
     image: nats-streaming:latest
     ports:
       - "4222:4222"
-  rabbit:
-    image: rabbitmq:latest
-    ports:
-      - "5672:5672"
   prometheus:
     image: prom/prometheus:latest
     ports:
